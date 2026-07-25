@@ -54,167 +54,185 @@ To protect our internal computing tier while maintaining the ability to pull pac
                            | (Route: 0.0.0.0/0 -> NAT Gateway)
           [ Private App Subnet (10.0.2.0/24) ]
              👉 Hosts: [ Node.js App Server ]
+```
 
-             Day 3: EC2 Compute Provisioning & Asymmetric Key Cryptography
-🎯 Architectural Objective
+---
+
+## Day 3: EC2 Compute Provisioning & Asymmetric Key Cryptography
+
+### 🎯 Architectural Objective
 Bridge the physical VPC networking layout from Day 2 with the robust Bastion security models required for Day 4 by correctly provisioning EC2 compute resources via Terraform and configuring asymmetric cryptography for secure access.
 
-🛠️ Technical Execution
-Declarative Compute Deployment: Authored Terraform aws_instance blocks to provision t3.micro EC2 compute nodes. Selected specific Amazon Machine Images (AMIs) aligned with Ubuntu 22.04 LTS to ensure a standardized Linux runtime for backend workloads.
+### 🛠️ Technical Execution
+* **Declarative Compute Deployment:** Authored Terraform `aws_instance` blocks to provision `t3.micro` EC2 compute nodes. Selected specific Amazon Machine Images (AMIs) aligned with Ubuntu 22.04 LTS to ensure a standardized Linux runtime for backend workloads.
+* **Cryptographic Key Management:** Generated local RSA 4096-bit key pairs (`.pem` / `.pub`) and utilized the `aws_key_pair` Terraform resource to inject the public key into the AWS hypervisor instance metadata.
+* **Idempotent State Management:** Verified that Terraform tracks the exact state of deployed EC2 compute units, allowing seamless updates and teardowns without leaving orphaned resources in `ap-south-1`.
 
-Cryptographic Key Management: Generated local RSA 4096-bit key pairs (.pem / .pub) and utilized the aws_key_pair Terraform resource to inject the public key into the AWS hypervisor instance metadata.
+---
 
-Idempotent State Management: Verified that Terraform tracks the exact state of deployed EC2 compute units, allowing seamless updates and teardowns without leaving orphaned resources in ap-south-1.
+## Day 4: Stateful Firewalls, Bastion Architecture, and Security Group Correlation
 
-Day 4: Stateful Firewalls, Bastion Architecture, and Security Group Correlation
-🎯 Architectural Objective
-Implementing a multi-layered Chain of Trust security framework. By separating public access controllers from private core resources and configuring advanced firewall dependencies, we ensured that our multi-tenant backend infrastructure remains completely hidden from external network sweeps while maintaining smooth administrative manageability.
+### 🎯 Architectural Objective
+Implementing a multi-layered **Chain of Trust** security framework. By separating public access controllers from private core resources and configuring advanced firewall dependencies, we ensured that our multi-tenant backend infrastructure remains completely hidden from external network sweeps while maintaining smooth administrative manageability.
 
-📚 Core Conceptual Framework
-Bastion Host: A highly hardened virtual machine deployed explicitly in the public entry network serving as the single, tightly monitored digital checkpoint for network management.
+### 📚 Core Conceptual Framework
+* **Bastion Host:** A highly hardened virtual machine deployed explicitly in the public entry network serving as the single, tightly monitored digital checkpoint for network management.
+* **Security Group:** A dynamic, host-level stateful firewall wrapping individual cloud resources.
+* **Stateful Routing:** A smart security feature where the firewall automatically tracks inbound connections and opens response paths automatically without manual outbound rule clutter.
 
-Security Group: A dynamic, host-level stateful firewall wrapping individual cloud resources.
+### 🔒 The Power of Security Group Nesting
+Instead of hardcoding easily spoofed IP ranges, we implemented **Security Group Nesting**. We configured the private application firewall to accept incoming traffic **only if it originates from a resource wearing the specific Bastion Security Group Badge (`security_groups = [aws_security_group.bastion_sg.id]`)**.
 
-Stateful Routing: A smart security feature where the firewall automatically tracks inbound connections and opens response paths automatically without manual outbound rule clutter.
+#### Why this is highly secure:
+1. **Dynamic Resiliency:** If the Bastion Host's internal IP changes, the backend vault doesn't break—the network tracks the identity badge, not the IP address.
+2. **Absolute External Rejection:** Any data packet sent to the private application tier is dropped at the edge unless it carries the verified tracking token of our public guard.
 
-🔒 The Power of Security Group Nesting
-Instead of hardcoding easily spoofed IP ranges, we implemented Security Group Nesting. We configured the private application firewall to accept incoming traffic only if it originates from a resource wearing the specific Bastion Security Group Badge (security_groups = [aws_security_group.bastion_sg.id]).
+### 🧪 System Audits & Diagnostic Telemetry
+1. **Direct Internet Attack (Blocked):** Attempting to bridge straight from a home network to the vault console (`10.0.2.112`) returned an immediate `Connection refused`.
+2. **Chain of Trust Jump (Passed):** Leveraging local `ssh-agent` keys to securely forward credential signatures through the Bastion proxy allowed immediate vault entry.
+3. **Session Verification (`w`):** Live telemetry inside the vault verified the source profile originated strictly from the Bastion internal identity (`10.0.1.x`).
 
-Why this is highly secure:
-Dynamic Resiliency: If the Bastion Host's internal IP changes, the backend vault doesn't break—the network tracks the identity badge, not the IP address.
+---
 
-Absolute External Rejection: Any data packet sent to the private application tier is dropped at the edge unless it carries the verified tracking token of our public guard.
+## Day 5: Production Managed Databases & Multi-AZ Network Group Isolation
 
-🧪 System Audits & Diagnostic Telemetry
-Direct Internet Attack (Blocked): Attempting to bridge straight from a home network to the vault console (10.0.2.112) returned an immediate Connection refused.
+Today, I expanded the LegacyLens infrastructure by provisioning a production-ready, fully isolated **AWS RDS PostgreSQL Engine** using declarative Terraform blocks. 
 
-Chain of Trust Jump (Passed): Leveraging local ssh-agent keys to securely forward credential signatures through the Bastion proxy allowed immediate vault entry.
+### Core Parameter Breakdown & Operational Engineering Value:
+* `allocated_storage = 20`: Allocates a 20 GB General Purpose SSD storage tier.
+* `engine = "postgres"` & `engine_version = "16.1"`: Installs a clean PostgreSQL 16.1 distribution.
+* `instance_class = "db.t4g.micro"`: Leverages an ARM-based AWS Graviton4-optimized micro-instance, delivering superior price-to-performance scaling compared to older x86 instances.
+* `db_subnet_group_name`: **The primary isolation anchor.** Restricts database deployment strictly to multi-AZ private subnets across `ap-south-1a` and `ap-south-1b`.
+* `vpc_security_group_ids`: Enforces microsegmentation boundaries. Rejects all network connection handshakes unless they originate strictly over TCP Port 5432 from the private application server's security profile.
+* `skip_final_snapshot = true`: Developer-velocity optimization to allow fast iteration during sandbox testing.
 
-Session Verification (w): Live telemetry inside the vault verified the source profile originated strictly from the Bastion internal identity (10.0.1.x).
+---
 
-Day 5: Production Managed Databases & Multi-AZ Network Group Isolation
-Today, I expanded the LegacyLens infrastructure by provisioning a production-ready, fully isolated AWS RDS PostgreSQL Engine using declarative Terraform blocks.
+## Day 6: Infrastructure Deployment & Secure Inside-VPC Database Handshake Verification
 
-Core Parameter Breakdown & Operational Engineering Value:
-allocated_storage = 20: Allocates a 20 GB General Purpose SSD storage tier.
+### 🛠️ Tasks Executed
+1. **Live RDS Provisioning:** Executed `terraform apply` to deploy a managed Multi-AZ PostgreSQL 16 relational database tier across isolated subnets.
+2. **Jump Host Tunnel Routing:** Leveraged local SSH Jump tunneling via the public Bastion host gate (`35.154.59.9`) to securely bridge access into the private application instance environment (`10.0.2.128`).
+3. **Linux Node Patching & Tooling Deployment:** Updated the internal Linux package manager index and installed native database utilities:
 
-engine = "postgres" & engine_version = "16.1": Installs a clean PostgreSQL 16.1 distribution.
-
-instance_class = "db.t4g.micro": Leverages an ARM-based AWS Graviton4-optimized micro-instance, delivering superior price-to-performance scaling compared to older x86 instances.
-
-db_subnet_group_name: The primary isolation anchor. Restricts database deployment strictly to multi-AZ private subnets across ap-south-1a and ap-south-1b.
-
-vpc_security_group_ids: Enforces microsegmentation boundaries. Rejects all network connection handshakes unless they originate strictly over TCP Port 5432 from the private application server's security profile.
-
-skip_final_snapshot = true: Developer-velocity optimization to allow fast iteration during sandbox testing.
-
-Day 6: Infrastructure Deployment & Secure Inside-VPC Database Handshake Verification
-🛠️ Tasks Executed
-Live RDS Provisioning: Executed terraform apply to deploy a managed Multi-AZ PostgreSQL 16 relational database tier across isolated subnets.
-
-Jump Host Tunnel Routing: Leveraged local SSH Jump tunneling via the public Bastion host gate (35.154.59.9) to securely bridge access into the private application instance environment (10.0.2.128).
-
-Linux Node Patching & Tooling Deployment: Updated the internal Linux package manager index and installed native database utilities:
-
-Bash
+```bash
 sudo apt-get update -y
 sudo apt-get install postgresql-client -y
 
 psql -h terraform-044b39d4f87acf5e351c17466b.cfew2m0cwv6o.ap-south-1.rds.amazonaws.com -U db_admin_user -d legacylens_prod
-Day 7: Programmatic Node.js Environment Isolation & Database Socket Verification
-🛠️ Tasks Executed
-Runtime Provisioning via NVM: Installed Node Version Manager (NVM) and provisioned Node.js v22.23.1 (LTS) along with npm on the private application server node (10.0.2.105).
+```
 
-Project Workspace & Dependency Management: Created ~/legacylens-core workspace and installed pg (node-postgres) driver and dotenv for secret isolation.
+---
 
-Secrets Decoupling: Configured .env file to hold database host endpoints, credentials, and parameters safely outside application code.
+## Day 7: Programmatic Node.js Environment Isolation & Database Socket Verification
 
-Programmatic Socket Handshake: Authored db-test.js to execute an asynchronous pool connection to the RDS Multi-AZ PostgreSQL cluster, validating query execution (SELECT NOW()) over TLS.
+### 🛠️ Tasks Executed
+1. **Runtime Provisioning via NVM:** Installed Node Version Manager (NVM) and provisioned Node.js `v22.23.1` (LTS) along with `npm` on the private application server node (`10.0.2.105`).
+2. **Project Workspace & Dependency Management:** Created `~/legacylens-core` workspace and installed `pg` (node-postgres) driver and `dotenv` for secret isolation.
+3. **Secrets Decoupling:** Configured `.env` file to hold database host endpoints, credentials, and parameters safely outside application code.
+4. **Programmatic Socket Handshake:** Authored `db-test.js` to execute an asynchronous pool connection to the RDS Multi-AZ PostgreSQL cluster, validating query execution (`SELECT NOW()`) over TLS.
 
-🔒 Security & Architectural Insights
-Zero Secrets in Version Control: Decoupling sensitive parameters via .env prevents credential exposure in version control. At runtime, dotenv loads configuration directly into process.env in memory.
+### 🔒 Security & Architectural Insights
+* **Zero Secrets in Version Control:** Decoupling sensitive parameters via `.env` prevents credential exposure in version control. At runtime, `dotenv` loads configuration directly into `process.env` in memory.
+* **Non-Blocking Asynchronous I/O & Connection Pooling:** The `pg` driver utilizes Node.js event loops to manage database sockets asynchronously without blocking concurrent HTTP application requests.
 
-Non-Blocking Asynchronous I/O & Connection Pooling: The pg driver utilizes Node.js event loops to manage database sockets asynchronously without blocking concurrent HTTP application requests.
+---
 
-Day 8: Multi-Tenant Schema Isolation & Dynamic Search Path Driver
-🛠️ Tasks Executed
-Isolated Schema Creation: Designed and executed day8_multitenant.sql to establish two logical schema boundaries (tenant_alpha and tenant_beta) inside a shared PostgreSQL RDS database.
+## Day 8: Multi-Tenant Schema Isolation & Dynamic Search Path Driver
 
-Schema-Level Data Segregation: Provisioned assets tables, primary keys, performance indices (idx_alpha_asset_name, idx_beta_asset_name), and seed records within each independent tenant namespace.
+### 🛠️ Tasks Executed
+1. **Isolated Schema Creation:** Designed and executed `day8_multitenant.sql` to establish two logical schema boundaries (`tenant_alpha` and `tenant_beta`) inside a shared PostgreSQL RDS database.
+2. **Schema-Level Data Segregation:** Provisioned `assets` tables, primary keys, performance indices (`idx_alpha_asset_name`, `idx_beta_asset_name`), and seed records within each independent tenant namespace.
+3. **Dynamic Driver Implementation:** Authored `index.js` utilizing `pg.Pool` to execute session-level `SET search_path TO <tenant_schema>` statements before query execution.
 
-Dynamic Driver Implementation: Authored index.js utilizing pg.Pool to execute session-level SET search_path TO <tenant_schema> statements before query execution.
+### 🔒 Architectural Insights
+* **Schema-Based Multi-Tenancy:** Using schema isolation balances resource usage and database cost while providing strict logical data boundaries between different tenants without requiring separate physical database instances.
+* **Dynamic Connection Context:** Setting `search_path` per connection checkout allows standard, uniform SQL queries (e.g., `SELECT * FROM assets`) to automatically target the correct tenant's data safely and efficiently.
 
-🔒 Architectural Insights
-Schema-Based Multi-Tenancy: Using schema isolation balances resource usage and database cost while providing strict logical data boundaries between different tenants without requiring separate physical database instances.
+---
 
-Dynamic Connection Context: Setting search_path per connection checkout allows standard, uniform SQL queries (e.g., SELECT * FROM assets) to automatically target the correct tenant's data safely and efficiently.
+## Day 9: Private Database Isolation & Multi-Tenant Schema Configuration
 
-Day 9: Private Database Isolation & Multi-Tenant Schema Configuration
-🎯 Objective
+### 🎯 Objective
 Secure the LegacyLens PostgreSQL database within a private AWS VPC subnet, establish zero-trust access using an EC2 Bastion host via AWS Systems Manager (SSM), and implement a multi-tenant database schema for client data isolation.
 
-🛠️ Tech Stack & AWS Services
-Compute: AWS EC2 (Ubuntu Bastion Host), AWS Systems Manager (SSM)
+### 🛠️ Tech Stack & AWS Services
+* **Compute:** AWS EC2 (Ubuntu Bastion Host), AWS Systems Manager (SSM)
+* **Database:** Amazon RDS (PostgreSQL 16)
+* **Networking:** Amazon VPC (Private Subnets), Security Groups
+* **Infrastructure as Code:** Terraform
+* **Tools:** `psql`, AWS CLI, Bash/PowerShell
 
-Database: Amazon RDS (PostgreSQL 16)
+### 🏗️ Architecture & Security Highlights
+1. **Zero-Trust Access (No SSH):** Eliminated the need for public IP addresses or opening Port 22. All administrative database access is routed securely through an EC2 Bastion host using AWS SSM Session Manager.
+2. **Private Subnet Isolation:** Deployed the RDS instance strictly within private subnets. The database is completely invisible to the public internet.
+3. **Security Group Chaining:** Configured the database Security Group to drop all connections except explicitly whitelisted internal VPC traffic (port 5432).
+4. **Multi-Tenant Schema Design:** Engineered a highly scalable PostgreSQL architecture using isolated schemas (`tenant_alpha`, `tenant_beta`) and dynamic `search_path` routing to securely separate restaurant data within a single database instance.
 
-Networking: Amazon VPC (Private Subnets), Security Groups
+### 🧪 Troubleshooting & Debugging Realities
+* **VPC Firewall Blockages:** Diagnosed a database connection timeout by identifying a missing inbound rule on the RDS Security Group. Successfully modified the SG to allow internal `10.0.0.0/16` traffic.
+* **Database Authentication:** Troubleshot and bypassed local tunnel authentication failures, switching to direct Bastion access to successfully authenticate the `db_admin_user`.
+* **Connection Monitoring:** Executed administrative SQL queries (`SELECT count(*) FROM pg_stat_activity;`) to monitor connection pool health and prevent exhaustion.
 
-Infrastructure as Code: Terraform
+---
 
-Tools: psql, AWS CLI, Bash/PowerShell
+## Day 10: Linux Network Diagnostics & Automated Database Migrations
 
-🏗️ Architecture & Security Highlights
-Zero-Trust Access (No SSH): Eliminated the need for public IP addresses or opening Port 22. All administrative database access is routed securely through an EC2 Bastion host using AWS SSM Session Manager.
-
-Private Subnet Isolation: Deployed the RDS instance strictly within private subnets. The database is completely invisible to the public internet.
-
-Security Group Chaining: Configured the database Security Group to drop all connections except explicitly whitelisted internal VPC traffic (port 5432).
-
-Multi-Tenant Schema Design: Engineered a highly scalable PostgreSQL architecture using isolated schemas (tenant_alpha, tenant_beta) and dynamic search_path routing to securely separate restaurant data within a single database instance.
-
-🧪 Troubleshooting & Debugging Realities
-VPC Firewall Blockages: Diagnosed a database connection timeout by identifying a missing inbound rule on the RDS Security Group. Successfully modified the SG to allow internal 10.0.0.0/16 traffic.
-
-Database Authentication: Troubleshot and bypassed local tunnel authentication failures, switching to direct Bastion access to successfully authenticate the db_admin_user.
-
-Connection Monitoring: Executed administrative SQL queries (SELECT count(*) FROM pg_stat_activity;) to monitor connection pool health and prevent exhaustion.
-
-Day 10: Linux Network Diagnostics & Automated Database Migrations
-🎯 Objective
+### 🎯 Objective
 Perform internal VPC network diagnostics using native Linux tools and deploy an idempotent, multi-tenant database migration script to an AWS RDS PostgreSQL instance via an EC2 Bastion host.
 
-🛠️ Tech Stack & Tools
-Compute / OS: AWS EC2, Ubuntu Linux
+### 🛠️ Tech Stack & Tools
+* **Compute / OS:** AWS EC2, Ubuntu Linux
+* **Database:** PostgreSQL 16 (Amazon RDS)
+* **Networking:** `ss`, `iproute2`, Netcat (`nc`)
+* **Version Control:** Git, GitHub
+* **Scripting:** SQL, Bash
 
-Database: PostgreSQL 16 (Amazon RDS)
+### 🏗️ Technical Execution
 
-Networking: ss, iproute2, Netcat (nc)
-
-Version Control: Git, GitHub
-
-Scripting: SQL, Bash
-
-🏗️ Technical Execution
-1. Advanced Linux Network Auditing
+#### 1. Advanced Linux Network Auditing
 Instead of relying on GUI tools or AWS console dashboards, I utilized native Linux networking commands from inside the Bastion host to audit the environment:
+* **`ss -tulpn`**: Inspected all listening TCP/UDP ports. Verified that SSH and SSM agents were running, while ensuring no rogue database services were running locally.
+* **`ip route show`**: Traced the internal IP routing table to confirm traffic was properly routing through the VPC's implicit router (`10.0.1.1`).
+* **`nc -zv 127.0.0.1 5432`**: Performed a raw TCP handshake test on the local loopback address. The `Connection refused` response validated the decoupled architecture: the database is strictly isolated on its own RDS instance.
 
-ss -tulpn: Inspected all listening TCP/UDP ports. Verified that SSH and SSM agents were running, while ensuring no rogue database services were running locally.
+#### 2. Idempotent Multi-Tenant Migrations
+Transitioned from manual SQL queries to an automated, production-ready migration script (`day10_schema_migration.sql`):
+* **Transactional Safety:** Wrapped the execution in a `BEGIN;` and `COMMIT;` block to ensure the database would not be left in a corrupted state if the script failed halfway through.
+* **Idempotency:** Utilized `IF NOT EXISTS` clauses for schema and table creation. This ensures the script can be run multiple times without throwing duplication errors or overwriting existing client data.
+* **Data Isolation:** Enforced strict logical separation between `tenant_alpha` and `tenant_beta` within a shared RDS instance, preparing the architecture for a scalable, multi-tenant application.
 
-ip route show: Traced the internal IP routing table to confirm traffic was properly routing through the VPC's implicit router (10.0.1.1).
+### 💡 Cloud Architecture Takeaways
+* **Infrastructure as Code (IaC) Principles in SQL:** Writing database migrations must follow the same idempotent principles as Terraform—describing the *desired state* rather than just a series of blind commands.
+* **Decoupled Architecture:** Proving a port is *closed* on a Bastion server is just as important as proving it is *open* on the target database server.
 
-nc -zv 127.0.0.1 5432: Performed a raw TCP handshake test on the local loopback address. The Connection refused response validated the decoupled architecture: the database is strictly isolated on its own RDS instance.
 
-2. Idempotent Multi-Tenant Migrations
-Transitioned from manual SQL queries to an automated, production-ready migration script (day10_schema_migration.sql):
+# Day 11: Repository Security, AWS Storage Audits & Database Optimization
 
-Transactional Safety: Wrapped the execution in a BEGIN; and COMMIT; block to ensure the database would not be left in a corrupted state if the script failed halfway through.
+## 🎯 Objective
+To secure the version control environment, perform live Linux storage diagnostics on AWS EC2 hardware, and deploy multi-tenant performance optimizations to the PostgreSQL database layer.
 
-Idempotency: Utilized IF NOT EXISTS clauses for schema and table creation. This ensures the script can be run multiple times without throwing duplication errors or overwriting existing client data.
+## 🛠️ Execution & Milestones
 
-Data Isolation: Enforced strict logical separation between tenant_alpha and tenant_beta within a shared RDS instance, preparing the architecture for a scalable, multi-tenant application.
+### 1. Version Control Security & Hardening
+* **Secret Management:** Validated `.gitignore` configurations using Git CLI to ensure sensitive files (`.env`, `terraform.tfstate`, `node_modules`) are strictly isolated from source control.
+* **Audit:** Utilized `git status` and `git check-ignore` to prove repository hygiene and prevent cloud credential leakage before committing to GitHub.
 
-💡 Cloud Architecture Takeaways
-Infrastructure as Code (IaC) Principles in SQL: Writing database migrations must follow the same idempotent principles as Terraform—describing the desired state rather than just a series of blind commands.
+### 2. AWS Zero-Trust Access & Storage Auditing
+* **Secure Access:** Bypassed traditional Port 22 SSH methods by utilizing **AWS Systems Manager (SSM) Session Manager** to establish a secure, zero-trust tunnel into the private Linux EC2 instance.
+* **Storage Diagnostics:** Executed Linux subsystem commands (`lsblk -f`, `df -hT`, `findmnt`) to map physical block devices.
+* **SAA-C03 Validation:** Verified that AWS Elastic Block Store (EBS) root volumes attach to the Nitro system as high-speed NVMe block devices and mapped active filesystem mounting (`ext4`).
 
-Decoupled Architecture: Proving a port is closed on a Bastion server is just as important as proving it is open on the target database server.
+### 3. PostgreSQL Operations & Deployment
+* **Admin Override:** Troubleshot local client connection blocks by modifying the `pg_hba.conf` security file, bypassing enforced SSL and password constraints to establish a direct local connection via PowerShell.
+* **Schema Initialization:** Provisioned the `legacylens_db` database and deployed Day 10 multi-tenant architectural schemas.
+* **Index Optimization:** Executed `day11_index_tuning.sql` to deploy B-Tree composite indices (`created_at DESC, customer_name`) across multiple tenant partitions, eliminating the risk of expensive full-table sequential scans as the application scales.
+
+## 🧠 Implementation Specialist Insights
+During the database optimization deployment, the `EXPLAIN ANALYZE` query planner returned a `Seq Scan` instead of an `Index Scan`. This successfully validated that PostgreSQL's query optimizer is functioning as intended: it intelligently bypassed the new index because the tables were currently empty, calculating that reading zero rows directly from disk requires less computational overhead than traversing an index tree.
+
+## 💻 Tech Stack Utilized
+* **Version Control:** Git, GitHub
+* **Cloud Infrastructure (AWS):** EC2, EBS, Systems Manager (SSM)
+* **OS & Scripting:** Windows PowerShell, Linux (Ubuntu 22.04)
+* **Database:** PostgreSQL
