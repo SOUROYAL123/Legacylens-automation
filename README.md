@@ -236,3 +236,29 @@ During the database optimization deployment, the `EXPLAIN ANALYZE` query planner
 * **Cloud Infrastructure (AWS):** EC2, EBS, Systems Manager (SSM)
 * **OS & Scripting:** Windows PowerShell, Linux (Ubuntu 22.04)
 * **Database:** PostgreSQL
+
+# Day 12: Database Concurrency Diagnostics & AWS Network Refactoring
+
+## 🎯 Objective
+To build advanced PostgreSQL diagnostic tools for handling database deadlocks in production, and to refactor a monolithic AWS Terraform configuration into a modular, enterprise-grade multi-tier VPC architecture.
+
+## 🛠️ Execution & Milestones
+
+### 1. Database Operations & Concurrency Management
+* **Deadlock Detection:** Engineered a targeted SQL diagnostic script (`day12_lock_diagnostics.sql`) joining `pg_catalog.pg_locks` and `pg_stat_activity` to instantly isolate blocked queries and identify rogue lock-holding PIDs.
+* **Process Termination Strategy:** Established operational protocols to resolve database traffic jams using surgical termination commands (`pg_cancel_backend` and `pg_terminate_backend`), ensuring maximum uptime without requiring full server reboots.
+
+### 2. Infrastructure as Code (IaC) Refactoring
+* **State Modularity:** Successfully refactored a monolithic `main.tf` file, strictly isolating the network routing layer (`vpc.tf`) from the compute and security layers (`main.tf`) to prevent duplicate resource conflicts and improve maintainability.
+* **VPC Provisioning:** Deployed a highly available AWS network boundary featuring a public lobby subnet (with an IGW and NAT Gateway) and multiple isolated private subnets for application servers and multi-AZ database deployments.
+
+### 3. Linux Network Diagnostics (Zero-Trust)
+* **Secure Access:** Tunneled into the private EC2 application server using AWS Systems Manager (SSM) Session Manager, bypassing the need for public SSH ports.
+* **Internal Routing Validation:** Verified outbound NAT Gateway routing using `curl` and mapped packet hops using `traceroute`.
+* **Security Group Auditing:** Proved Least Privilege access between the application tier and the database tier using `nc` (netcat) to verify open TCP communication on port 5432.
+
+## 💻 Tech Stack Utilized
+* **Cloud Infrastructure:** AWS (VPC, EC2, NAT Gateway, IGW, SSM, RDS)
+* **Infrastructure as Code:** Terraform (HCL)
+* **Database:** PostgreSQL (pg_catalog administration)
+* **OS & Networking:** Linux (Ubuntu 22.04), Windows PowerShell
