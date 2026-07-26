@@ -85,13 +85,14 @@ resource "aws_instance" "bastion" {
   tags = { Name = "Legacylens-Bastion-Host" }
 }
 
-# 16. Private Application Server
+# 16. Private Application Server (WITH SSM PROFILE ATTACHED)
 resource "aws_instance" "private_app_server" {
   ami                    = "ami-0522ab6e1ddcc7055"
   instance_type          = "t3.micro"
   subnet_id              = aws_subnet.private_app.id
   vpc_security_group_ids = [aws_security_group.private_app_sg.id]
   key_name               = "legacylens-key"
+  iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
   tags = { Name = "Legacylens-Private-App-Server" }
 }
 
