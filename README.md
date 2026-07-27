@@ -262,3 +262,39 @@ To build advanced PostgreSQL diagnostic tools for handling database deadlocks in
 * **Infrastructure as Code:** Terraform (HCL)
 * **Database:** PostgreSQL (pg_catalog administration)
 * **OS & Networking:** Linux (Ubuntu 22.04), Windows PowerShell
+
+# Day 13: Application Layer Deployment & Secure Database Driver Integration
+
+## 🎯 Objective
+To bridge the underlying network infrastructure with the active application tier by provisioning the Node.js runtime environment on the private EC2 instance, configuring environment-based secret isolation, and validating end-to-end multi-tenant database connectivity to the RDS PostgreSQL cluster.
+
+---
+
+## 🛠️ Execution & Milestones
+
+### 1. Private Compute Node & Runtime Provisioning
+* **Zero-Trust Access:** Tunneled into the private application server (`Legacylens-Private-App-Server`) using **AWS Systems Manager (SSM) Session Manager**, maintaining a zero-public-IP perimeter.
+* **Runtime Standardization:** Provisioned Node Version Manager (`nvm`) to deploy and lock the Node.js runtime and `npm` package manager on the Ubuntu environment.
+
+### 2. Application Layer & Secret Decoupling
+* **Workspace Initialization:** Configured the `~/legacylens-core` application workspace directory.
+* **Dependency Management:** Installed production dependencies including `pg` (node-postgres) for non-blocking asynchronous database driver interactions and `dotenv` for runtime configuration loading.
+* **Secrets Isolation:** Authored a local `.env` configuration file to safely store sensitive RDS endpoint targets, port mappings, and database credentials outside of application source code.
+
+### 3. Programmatic Socket & Pool Connection Audit
+* **Asynchronous Connection Pooling:** Executed driver scripts utilizing `pg.Pool` to manage database connection lifecycles without blocking the event loop or exhausting RDS `max_connections` allocation limits.
+* **TLS-Secured Query Execution:** Successfully verified end-to-end database connectivity by executing parameterized SQL queries (`SELECT NOW()`, `SHOW search_path;`) from the private application server over an encrypted TLS channel to the multi-AZ RDS database.
+
+---
+
+## 🧠 Implementation Specialist Takeaways
+* **Secrets Hygiene:** Keeping credentials in decoupled `.env` files loaded dynamically into `process.env` at runtime guarantees that no database credentials ever enter git source control.
+* **Resource Optimization:** Utilizing connection pooling (`pg.Pool`) ensures that high-concurrency Node.js event loops reuse database sockets efficiently, protecting the RDS engine from running out of available connection slots during traffic spikes.
+
+---
+
+## 💻 Tech Stack Utilized
+* **Cloud Infrastructure:** AWS (VPC, Private Subnets, EC2, SSM, RDS PostgreSQL)
+* **Runtime & Drivers:** Node.js, `npm`, `pg` (node-postgres), `dotenv`
+* **OS & Tools:** Linux (Ubuntu 22.04), Bash
+* **Version Control:** Git, GitHub

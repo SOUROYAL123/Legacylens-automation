@@ -2,7 +2,7 @@
 # NETWORK LAYER (vpc.tf)
 # ====================================================================
 
-# 1. Core Virtual Private Cloud Perimeter
+# 1. Core Virtual Private Cloud Perimeter (Production)
 resource "aws_vpc" "legacylens" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
@@ -56,7 +56,7 @@ resource "aws_subnet" "private_db_subnet_2" {
   tags = { Name = "Legacylens-Private-DB-Subnet2" }
 }
 
-# 9 & 10. Static Public IP and NAT Gateway
+# 7 & 8. Static Public IP and NAT Gateway
 resource "aws_eip" "nat_eip" {
   domain     = "vpc"
   depends_on = [aws_internet_gateway.igw]
@@ -69,7 +69,7 @@ resource "aws_nat_gateway" "nat_gw" {
   tags = { Name = "Legacylens-NAT-GW" }
 }
 
-# 11 & 12. Private Route Table & Association
+# 9 & 10. Private Route Table & Association
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.legacylens.id
   route {
@@ -82,4 +82,31 @@ resource "aws_route_table" "private" {
 resource "aws_route_table_association" "private_app_assoc" {
   subnet_id      = aws_subnet.private_app.id
   route_table_id = aws_route_table.private.id
+}
+
+# ====================================================================
+# MULTI-VPC STAGING & PEERING ARCHITECTURE
+# ====================================================================
+
+# 11. Secondary Staging Virtual Private Cloud
+resource "aws_vpc" "staging_vpc" {
+  cidr_block           = "10.1.0.0/16"
+  enable_dns_hostnames = true
+  tags = { Name = "legacylens-staging-vpc" }
+}
+
+# 12. VPC Peering Connection Request (Production <-> Staging)
+resource "aws_vpc_peering_connection" "prod_to_staging" {
+  peer_vpc_id = aws_vpc.staging_vpc.id
+  vpc_id      = aws_vpc.legacylens.id
+  auto_accept = true
+
+  tags = { Name = "prod-to-staging-peering" }
+}
+
+# 13. Route Table Entry for Prod Private Subnet -> Staging CIDR
+resource "aws_route" "prod_to_staging_route" {
+  route_table_id            = aws_route_table.private.id
+  destination_cidr_block    = "10.1.0.0/16"
+  vpc_peering_connection_id = aws_vpc_peering_connection.prod_to_staging.id
 }
