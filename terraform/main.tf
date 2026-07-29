@@ -62,7 +62,7 @@ resource "aws_security_group" "db_sg" {
     from_port       = 5432
     to_port         = 5432
     protocol        = "tcp"
-    security_groups = [aws_security_group.private_app_sg.id] 
+    security_groups = [aws_security_group.private_app_sg.id]
   }
   egress {
     description = "Allow all outbound traffic"
@@ -82,7 +82,7 @@ resource "aws_instance" "bastion" {
   vpc_security_group_ids = [aws_security_group.bastion_sg.id]
   key_name               = "legacylens-key"
   iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
-  tags = { Name = "Legacylens-Bastion-Host" }
+  tags                   = { Name = "Legacylens-Bastion-Host" }
 }
 
 # 16. Private Application Server (WITH SSM PROFILE ATTACHED)
@@ -93,14 +93,14 @@ resource "aws_instance" "private_app_server" {
   vpc_security_group_ids = [aws_security_group.private_app_sg.id]
   key_name               = "legacylens-key"
   iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
-  tags = { Name = "Legacylens-Private-App-Server" }
+  tags                   = { Name = "Legacylens-Private-App-Server" }
 }
 
 # 13. Managed Multi-AZ Database Group Mapping
 resource "aws_db_subnet_group" "db_subnet_group" {
   name       = "legacylens-db-subnet-group"
   subnet_ids = [aws_subnet.private_db_subnet.id, aws_subnet.private_db_subnet_2.id]
-  tags = { Name = "Legacylens-DB-Subnet-Group" }
+  tags       = { Name = "Legacylens-DB-Subnet-Group" }
 }
 
 # 15. Production-Ready Managed Postgres Database Engine (Multi-AZ)
@@ -117,7 +117,7 @@ resource "aws_db_instance" "postgres_db" {
   vpc_security_group_ids = [aws_security_group.db_sg.id]
   multi_az               = true
   skip_final_snapshot    = true
-  tags = { Name = "Legacylens-Production-Database" }
+  tags                   = { Name = "Legacylens-Production-Database" }
 }
 
 # 17. IAM Role for Systems Manager (SSM)
