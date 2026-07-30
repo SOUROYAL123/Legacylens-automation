@@ -70,7 +70,7 @@ resource "aws_nat_gateway" "nat_gw" {
 }
 
 # 9 & 10. Private Route Table & Association
-resource "aws_route_table" "private" {
+resource "aws_route_table" "private_route_table" {
   vpc_id = aws_vpc.legacylens.id
   route {
     cidr_block     = "0.0.0.0/0"
@@ -81,7 +81,7 @@ resource "aws_route_table" "private" {
 
 resource "aws_route_table_association" "private_app_assoc" {
   subnet_id      = aws_subnet.private_app.id
-  route_table_id = aws_route_table.private.id
+  route_table_id = aws_route_table.private_route_table.id
 }
 
 # ====================================================================
@@ -106,37 +106,7 @@ resource "aws_vpc_peering_connection" "prod_to_staging" {
 
 # 13. Route Table Entry for Prod Private Subnet -> Staging CIDR
 resource "aws_route" "prod_to_staging_route" {
-  route_table_id            = aws_route_table.private.id
+  route_table_id            = aws_route_table.private_route_table.id
   destination_cidr_block    = "10.1.0.0/16"
   vpc_peering_connection_id = aws_vpc_peering_connection.prod_to_staging.id
-}
-
-# ====================================================================
-# ON-PREMISES TO AWS HYBRID CLOUD VPN
-# ====================================================================
-
-# 14. On-Premises Customer Gateway (The Simulated Corporate Router)
-resource "aws_customer_gateway" "onprem_cgw" {
-  bgp_asn    = 65000
-  ip_address = "203.0.113.12" # Dummy Public IP of on-prem router
-  type       = "ipsec.1"
-
-  tags = { Name = "legacylens-onprem-cgw" }
-}
-
-# 15. Virtual Private Gateway (The AWS-Side VPN Receiver)
-resource "aws_vpn_gateway" "vpn_gw" {
-  vpc_id = aws_vpc.legacylens.id
-
-  tags = { Name = "legacylens-vpg" }
-}
-
-# 16. IPSec Site-to-Site VPN Connection (The Encrypted Tunnel)
-resource "aws_vpn_connection" "site_to_site" {
-  vpn_gateway_id      = aws_vpn_gateway.vpn_gw.id
-  customer_gateway_id = aws_customer_gateway.onprem_cgw.id
-  type                = "ipsec.1"
-  static_routes_only  = true
-
-  tags = { Name = "legacylens-s2s-vpn" }
 }
