@@ -84,6 +84,18 @@ resource "aws_route_table_association" "private_app_assoc" {
   route_table_id = aws_route_table.private_route_table.id
 }
 
+# --- DNS ROUTING FIX: Attaching Private Routes to DNS Subnets ---
+resource "aws_route_table_association" "dns_outbound_1a_assoc" {
+  subnet_id      = aws_subnet.dns_outbound_1a.id
+  route_table_id = aws_route_table.private_route_table.id
+}
+
+resource "aws_route_table_association" "dns_outbound_1b_assoc" {
+  subnet_id      = aws_subnet.dns_outbound_1b.id
+  route_table_id = aws_route_table.private_route_table.id
+}
+# ----------------------------------------------------------------
+
 # ====================================================================
 # MULTI-VPC STAGING & PEERING ARCHITECTURE
 # ====================================================================
@@ -109,4 +121,26 @@ resource "aws_route" "prod_to_staging_route" {
   route_table_id            = aws_route_table.private_route_table.id
   destination_cidr_block    = "10.1.0.0/16"
   vpc_peering_connection_id = aws_vpc_peering_connection.prod_to_staging.id
+}
+
+# ====================================================================
+# DNS RESOLUTION FIX: DHCP OPTIONS SET
+# ====================================================================
+
+# 14. Create the strict rule to use the AWS Internal Phonebook
+resource "aws_vpc_dhcp_options" "native_aws_dns" {
+  domain_name_servers = ["AmazonProvidedDNS"]
+  tags                = { Name = "Legacylens-Native-DHCP" }
+}
+
+# 15. Attach the rule to your Main Hub VPC (Production)
+resource "aws_vpc_dhcp_options_association" "hub_vpc_dns_fix" {
+  vpc_id          = aws_vpc.legacylens.id
+  dhcp_options_id = aws_vpc_dhcp_options.native_aws_dns.id
+}
+
+# 16. Attach the rule to your Spoke VPC (Staging)
+resource "aws_vpc_dhcp_options_association" "spoke_vpc_dns_fix" {
+  vpc_id          = aws_vpc.staging_vpc.id
+  dhcp_options_id = aws_vpc_dhcp_options.native_aws_dns.id
 }

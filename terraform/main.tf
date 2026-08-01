@@ -20,6 +20,7 @@ resource "aws_security_group" "bastion_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
   egress {
+    description = "Allow all outbound traffic"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -82,7 +83,16 @@ resource "aws_instance" "bastion" {
   vpc_security_group_ids = [aws_security_group.bastion_sg.id]
   key_name               = "legacylens-key"
   iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
-  tags                   = { Name = "Legacylens-Bastion-Host" }
+
+  # Security Hardening: Enforce IMDSv2 & Encrypted Root Disk
+  metadata_options {
+    http_tokens = "required"
+  }
+  root_block_device {
+    encrypted = true
+  }
+
+  tags = { Name = "Legacylens-Bastion-Host" }
 }
 
 # 16. Private Application Server (WITH SSM PROFILE ATTACHED)
@@ -93,7 +103,16 @@ resource "aws_instance" "private_app_server" {
   vpc_security_group_ids = [aws_security_group.private_app_sg.id]
   key_name               = "legacylens-key"
   iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
-  tags                   = { Name = "Legacylens-Private-App-Server" }
+
+  # Security Hardening: Enforce IMDSv2 & Encrypted Root Disk
+  metadata_options {
+    http_tokens = "required"
+  }
+  root_block_device {
+    encrypted = true
+  }
+
+  tags = { Name = "Legacylens-Private-App-Server" }
 }
 
 # 13. Managed Multi-AZ Database Group Mapping
@@ -103,7 +122,7 @@ resource "aws_db_subnet_group" "db_subnet_group" {
   tags       = { Name = "Legacylens-DB-Subnet-Group" }
 }
 
-# 15. Production-Ready Managed Postgres Database Engine (Multi-AZ)
+# 15. Production-Ready Managed Postgres Database Engine (Multi-AZ & Hardened)
 resource "aws_db_instance" "postgres_db" {
   allocated_storage      = 20
   max_allocated_storage  = 100
@@ -117,7 +136,15 @@ resource "aws_db_instance" "postgres_db" {
   vpc_security_group_ids = [aws_security_group.db_sg.id]
   multi_az               = true
   skip_final_snapshot    = true
-  tags                   = { Name = "Legacylens-Production-Database" }
+
+  # Security Hardening: Encryption, Backups, Protection
+  storage_encrypted                   = true
+  backup_retention_period             = 1 
+  performance_insights_enabled        = true
+  deletion_protection                 = false
+  iam_database_authentication_enabled = true
+
+  tags = { Name = "Legacylens-Production-Database" }
 }
 
 # 17. IAM Role for Systems Manager (SSM)
