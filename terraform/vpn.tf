@@ -30,8 +30,8 @@ resource "aws_vpn_connection" "hybrid_vpn" {
 
 # 4. Attach the Production VPC to the Transit Gateway Hub
 resource "aws_ec2_transit_gateway_vpc_attachment" "vpc_attachment" {
-  # Updated with your verified subnet resource names
-  subnet_ids         = [aws_subnet.private_app.id, aws_subnet.private_db_subnet.id]
+  # FIXED: Pointing to two different AZs to satisfy AWS requirements
+  subnet_ids         = [aws_subnet.private_app.id, aws_subnet.private_db_subnet_2.id]
   transit_gateway_id = aws_ec2_transit_gateway.main_tgw.id
   vpc_id             = aws_vpc.legacylens.id
 

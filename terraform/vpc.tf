@@ -1,82 +1,94 @@
-# ====================================================================
-# NETWORK LAYER (vpc.tf)
-# ====================================================================
-
-# 1. Core Virtual Private Cloud Perimeter (Production)
+# -----------------------------------------------------------------------------
+# Main Producer VPC (aws_vpc.legacylens - 10.38.0.0/16)
+# -----------------------------------------------------------------------------
 resource "aws_vpc" "legacylens" {
-  cidr_block           = "10.0.0.0/16"
+  cidr_block           = var.vpc_beta_cidr
   enable_dns_hostnames = true
-  tags                 = { Name = "Legacylens-VPC" }
+  enable_dns_support   = true
+
+  tags = {
+    Name = "VPC-LegacyLens-Producer"
+  }
 }
 
-# 2. Public Facing Lobby Subnet
-resource "aws_subnet" "public_subnet" {
-  vpc_id                  = aws_vpc.legacylens.id
-  cidr_block              = "10.0.1.0/24"
-  map_public_ip_on_launch = true
-  tags                    = { Name = "Legacylens-Public-Subnet" }
-}
-
-# 3. Inbound/Outbound Public Highway Gateway
+# Internet Gateway for Public Access
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.legacylens.id
-  tags   = { Name = "Legacylens-IGW" }
+
+  tags = {
+    Name = "legacylens-igw"
+  }
 }
 
-# 4. Main Route Table Configuration (Public Network Rules -> IGW)
-resource "aws_default_route_table" "public_rt" {
-  default_route_table_id = aws_vpc.legacylens.default_route_table_id
+# Public Subnet (Required for Bastion Host in main.tf)
+resource "aws_subnet" "public_subnet" {
+  vpc_id                  = aws_vpc.legacylens.id
+  cidr_block              = "10.38.0.0/24"
+  availability_zone       = "${var.aws_region}a"
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name = "legacylens-public-subnet"
+  }
+}
+
+# Public Route Table
+resource "aws_route_table" "public_route_table" {
+  vpc_id = aws_vpc.legacylens.id
+
   route {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.igw.id
   }
-  tags = { Name = "Legacylens-Public-RT" }
+
+  tags = {
+    Name = "legacylens-public-rt"
+  }
 }
 
-# 5. Isolated Application Core Subnet
+resource "aws_route_table_association" "public_assoc" {
+  subnet_id      = aws_subnet.public_subnet.id
+  route_table_id = aws_route_table.public_route_table.id
+}
+
+# Private Subnets
 resource "aws_subnet" "private_app" {
   vpc_id            = aws_vpc.legacylens.id
-  cidr_block        = "10.0.2.0/24"
-  availability_zone = "ap-south-1a"
-  tags              = { Name = "Legacylens-Private-App" }
+  cidr_block        = "10.38.1.0/24"
+  availability_zone = "${var.aws_region}a"
+
+  tags = {
+    Name = "legacylens-private-app"
+  }
 }
 
-# 6. Isolated Database Subnets (Multi-AZ)
 resource "aws_subnet" "private_db_subnet" {
   vpc_id            = aws_vpc.legacylens.id
-  cidr_block        = "10.0.3.0/24"
-  availability_zone = "ap-south-1b"
-  tags              = { Name = "Legacylens-Private-DB-Subnet" }
+  cidr_block        = "10.38.2.0/24"
+  availability_zone = "${var.aws_region}a"
+
+  tags = {
+    Name = "legacylens-private-db-1"
+  }
 }
 
 resource "aws_subnet" "private_db_subnet_2" {
   vpc_id            = aws_vpc.legacylens.id
-  cidr_block        = "10.0.4.0/24"
-  availability_zone = "ap-south-1a"
-  tags              = { Name = "Legacylens-Private-DB-Subnet2" }
+  cidr_block        = "10.38.3.0/24"
+  availability_zone = "${var.aws_region}b"
+
+  tags = {
+    Name = "legacylens-private-db-2"
+  }
 }
 
-# 7 & 8. Static Public IP and NAT Gateway
-resource "aws_eip" "nat_eip" {
-  domain     = "vpc"
-  depends_on = [aws_internet_gateway.igw]
-  tags       = { Name = "Legacylens-NAT-EIP" }
-}
-
-resource "aws_nat_gateway" "nat_gw" {
-  allocation_id = aws_eip.nat_eip.id
-  subnet_id     = aws_subnet.public_subnet.id
-  tags          = { Name = "Legacylens-NAT-GW" }
-}
-
-# 9 & 10. Private Route Table & Association
+# Private Route Table
 resource "aws_route_table" "private_route_table" {
   vpc_id = aws_vpc.legacylens.id
-  route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.nat_gw.id
+
+  tags = {
+    Name = "legacylens-private-rt"
   }
-  tags = { Name = "Legacylens-Private-RT" }
 }
 
 resource "aws_route_table_association" "private_app_assoc" {
@@ -84,63 +96,45 @@ resource "aws_route_table_association" "private_app_assoc" {
   route_table_id = aws_route_table.private_route_table.id
 }
 
-# --- DNS ROUTING FIX: Attaching Private Routes to DNS Subnets ---
-resource "aws_route_table_association" "dns_outbound_1a_assoc" {
-  subnet_id      = aws_subnet.dns_outbound_1a.id
+resource "aws_route_table_association" "private_db_assoc" {
+  subnet_id      = aws_subnet.private_db_subnet.id
   route_table_id = aws_route_table.private_route_table.id
 }
 
-resource "aws_route_table_association" "dns_outbound_1b_assoc" {
-  subnet_id      = aws_subnet.dns_outbound_1b.id
+resource "aws_route_table_association" "private_db_2_assoc" {
+  subnet_id      = aws_subnet.private_db_subnet_2.id
   route_table_id = aws_route_table.private_route_table.id
 }
-# ----------------------------------------------------------------
 
-# ====================================================================
-# MULTI-VPC STAGING & PEERING ARCHITECTURE
-# ====================================================================
-
-# 11. Secondary Staging Virtual Private Cloud
-resource "aws_vpc" "staging_vpc" {
-  cidr_block           = "10.1.0.0/16"
+# -----------------------------------------------------------------------------
+# Consumer VPC (aws_vpc.alpha - 10.37.0.0/16)
+# -----------------------------------------------------------------------------
+resource "aws_vpc" "alpha" {
+  cidr_block           = var.vpc_alpha_cidr
   enable_dns_hostnames = true
-  tags                 = { Name = "legacylens-staging-vpc" }
+  enable_dns_support   = true
+
+  tags = {
+    Name = "VPC-Alpha-Consumer"
+  }
 }
 
-# 12. VPC Peering Connection Request (Production <-> Staging)
-resource "aws_vpc_peering_connection" "prod_to_staging" {
-  peer_vpc_id = aws_vpc.staging_vpc.id
-  vpc_id      = aws_vpc.legacylens.id
-  auto_accept = true
+resource "aws_subnet" "alpha_private_a" {
+  vpc_id            = aws_vpc.alpha.id
+  cidr_block        = "10.37.1.0/24"
+  availability_zone = "${var.aws_region}a"
 
-  tags = { Name = "prod-to-staging-peering" }
+  tags = {
+    Name = "alpha-private-a"
+  }
 }
 
-# 13. Route Table Entry for Prod Private Subnet -> Staging CIDR
-resource "aws_route" "prod_to_staging_route" {
-  route_table_id            = aws_route_table.private_route_table.id
-  destination_cidr_block    = "10.1.0.0/16"
-  vpc_peering_connection_id = aws_vpc_peering_connection.prod_to_staging.id
-}
+resource "aws_subnet" "alpha_private_b" {
+  vpc_id            = aws_vpc.alpha.id
+  cidr_block        = "10.37.2.0/24"
+  availability_zone = "${var.aws_region}b"
 
-# ====================================================================
-# DNS RESOLUTION FIX: DHCP OPTIONS SET
-# ====================================================================
-
-# 14. Create the strict rule to use the AWS Internal Phonebook
-resource "aws_vpc_dhcp_options" "native_aws_dns" {
-  domain_name_servers = ["AmazonProvidedDNS"]
-  tags                = { Name = "Legacylens-Native-DHCP" }
-}
-
-# 15. Attach the rule to your Main Hub VPC (Production)
-resource "aws_vpc_dhcp_options_association" "hub_vpc_dns_fix" {
-  vpc_id          = aws_vpc.legacylens.id
-  dhcp_options_id = aws_vpc_dhcp_options.native_aws_dns.id
-}
-
-# 16. Attach the rule to your Spoke VPC (Staging)
-resource "aws_vpc_dhcp_options_association" "spoke_vpc_dns_fix" {
-  vpc_id          = aws_vpc.staging_vpc.id
-  dhcp_options_id = aws_vpc_dhcp_options.native_aws_dns.id
+  tags = {
+    Name = "alpha-private-b"
+  }
 }

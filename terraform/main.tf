@@ -139,7 +139,7 @@ resource "aws_db_instance" "postgres_db" {
 
   # Security Hardening: Encryption, Backups, Protection
   storage_encrypted                   = true
-  backup_retention_period             = 1 
+  backup_retention_period             = 1
   performance_insights_enabled        = true
   deletion_protection                 = false
   iam_database_authentication_enabled = true
