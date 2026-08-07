@@ -10,7 +10,3 @@
 # Ignore variable overrides containing real secrets
 terraform.tfvars
 *.auto.tfvars
-
-# Ignore Node.js dependencies and local environment variables
-node_modules/
-.env

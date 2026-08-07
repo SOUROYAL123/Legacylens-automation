@@ -1,6 +1,7 @@
-# -----------------------------------------------------------------------------
-# Main Producer VPC (aws_vpc.legacylens - 10.38.0.0/16)
-# -----------------------------------------------------------------------------
+# ====================================================================
+# PRODUCER VPC (aws_vpc.legacylens - 10.38.0.0/16)
+# ====================================================================
+
 resource "aws_vpc" "legacylens" {
   cidr_block           = var.vpc_beta_cidr
   enable_dns_hostnames = true
@@ -20,20 +21,98 @@ resource "aws_internet_gateway" "igw" {
   }
 }
 
-# Public Subnet (Required for Bastion Host in main.tf)
-resource "aws_subnet" "public_subnet" {
+# -----------------------------------------------------------------------------
+# AVAILABILITY ZONE 1 (ap-south-1a)
+# -----------------------------------------------------------------------------
+
+resource "aws_subnet" "public_az1" {
   vpc_id                  = aws_vpc.legacylens.id
   cidr_block              = "10.38.0.0/24"
   availability_zone       = "${var.aws_region}a"
   map_public_ip_on_launch = true
 
-  tags = {
-    Name = "legacylens-public-subnet"
-  }
+  tags = { Name = "legacylens-public-az1" }
 }
 
-# Public Route Table
-resource "aws_route_table" "public_route_table" {
+resource "aws_subnet" "private_app_az1" {
+  vpc_id                  = aws_vpc.legacylens.id
+  cidr_block              = "10.38.10.0/24"
+  availability_zone       = "${var.aws_region}a"
+  map_public_ip_on_launch = false
+
+  tags = { Name = "legacylens-private-app-az1" }
+}
+
+resource "aws_subnet" "private_db_az1" {
+  vpc_id                  = aws_vpc.legacylens.id
+  cidr_block              = "10.38.20.0/24"
+  availability_zone       = "${var.aws_region}a"
+  map_public_ip_on_launch = false # Strictly enforced isolation
+
+  tags = { Name = "legacylens-private-db-az1" }
+}
+
+# NAT Gateway AZ1
+resource "aws_eip" "nat_az1" {
+  domain = "vpc"
+  tags   = { Name = "legacylens-eip-az1" }
+}
+
+resource "aws_nat_gateway" "nat_az1" {
+  allocation_id = aws_eip.nat_az1.id
+  subnet_id     = aws_subnet.public_az1.id
+  tags          = { Name = "legacylens-nat-az1" }
+}
+
+# -----------------------------------------------------------------------------
+# AVAILABILITY ZONE 2 (ap-south-1b)
+# -----------------------------------------------------------------------------
+
+resource "aws_subnet" "public_az2" {
+  vpc_id                  = aws_vpc.legacylens.id
+  cidr_block              = "10.38.1.0/24"
+  availability_zone       = "${var.aws_region}b"
+  map_public_ip_on_launch = true
+
+  tags = { Name = "legacylens-public-az2" }
+}
+
+resource "aws_subnet" "private_app_az2" {
+  vpc_id                  = aws_vpc.legacylens.id
+  cidr_block              = "10.38.11.0/24"
+  availability_zone       = "${var.aws_region}b"
+  map_public_ip_on_launch = false
+
+  tags = { Name = "legacylens-private-app-az2" }
+}
+
+resource "aws_subnet" "private_db_az2" {
+  vpc_id                  = aws_vpc.legacylens.id
+  cidr_block              = "10.38.21.0/24"
+  availability_zone       = "${var.aws_region}b"
+  map_public_ip_on_launch = false # Strictly enforced isolation
+
+  tags = { Name = "legacylens-private-db-az2" }
+}
+
+# NAT Gateway AZ2
+resource "aws_eip" "nat_az2" {
+  domain = "vpc"
+  tags   = { Name = "legacylens-eip-az2" }
+}
+
+resource "aws_nat_gateway" "nat_az2" {
+  allocation_id = aws_eip.nat_az2.id
+  subnet_id     = aws_subnet.public_az2.id
+  tags          = { Name = "legacylens-nat-az2" }
+}
+
+# -----------------------------------------------------------------------------
+# ROUTING TABLES & ASSOCIATIONS (PRODUCER VPC)
+# -----------------------------------------------------------------------------
+
+# 1. Public Route Table (IGW)
+resource "aws_route_table" "public_rt" {
   vpc_id = aws_vpc.legacylens.id
 
   route {
@@ -41,74 +120,75 @@ resource "aws_route_table" "public_route_table" {
     gateway_id = aws_internet_gateway.igw.id
   }
 
-  tags = {
-    Name = "legacylens-public-rt"
-  }
+  tags = { Name = "legacylens-public-rt" }
 }
 
-resource "aws_route_table_association" "public_assoc" {
-  subnet_id      = aws_subnet.public_subnet.id
-  route_table_id = aws_route_table.public_route_table.id
+resource "aws_route_table_association" "pub_az1" {
+  subnet_id      = aws_subnet.public_az1.id
+  route_table_id = aws_route_table.public_rt.id
 }
 
-# Private Subnets
-resource "aws_subnet" "private_app" {
-  vpc_id            = aws_vpc.legacylens.id
-  cidr_block        = "10.38.1.0/24"
-  availability_zone = "${var.aws_region}a"
-
-  tags = {
-    Name = "legacylens-private-app"
-  }
+resource "aws_route_table_association" "pub_az2" {
+  subnet_id      = aws_subnet.public_az2.id
+  route_table_id = aws_route_table.public_rt.id
 }
 
-resource "aws_subnet" "private_db_subnet" {
-  vpc_id            = aws_vpc.legacylens.id
-  cidr_block        = "10.38.2.0/24"
-  availability_zone = "${var.aws_region}a"
-
-  tags = {
-    Name = "legacylens-private-db-1"
-  }
-}
-
-resource "aws_subnet" "private_db_subnet_2" {
-  vpc_id            = aws_vpc.legacylens.id
-  cidr_block        = "10.38.3.0/24"
-  availability_zone = "${var.aws_region}b"
-
-  tags = {
-    Name = "legacylens-private-db-2"
-  }
-}
-
-# Private Route Table
-resource "aws_route_table" "private_route_table" {
+# 2. Private App Route Table AZ1 (Points to NAT AZ1)
+resource "aws_route_table" "private_rt_az1" {
   vpc_id = aws_vpc.legacylens.id
 
-  tags = {
-    Name = "legacylens-private-rt"
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.nat_az1.id
   }
+
+  tags = { Name = "legacylens-private-rt-az1" }
 }
 
-resource "aws_route_table_association" "private_app_assoc" {
-  subnet_id      = aws_subnet.private_app.id
-  route_table_id = aws_route_table.private_route_table.id
+resource "aws_route_table_association" "priv_app_az1" {
+  subnet_id      = aws_subnet.private_app_az1.id
+  route_table_id = aws_route_table.private_rt_az1.id
 }
 
-resource "aws_route_table_association" "private_db_assoc" {
-  subnet_id      = aws_subnet.private_db_subnet.id
-  route_table_id = aws_route_table.private_route_table.id
+# 3. Private App Route Table AZ2 (Points to NAT AZ2)
+resource "aws_route_table" "private_rt_az2" {
+  vpc_id = aws_vpc.legacylens.id
+
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.nat_az2.id
+  }
+
+  tags = { Name = "legacylens-private-rt-az2" }
 }
 
-resource "aws_route_table_association" "private_db_2_assoc" {
-  subnet_id      = aws_subnet.private_db_subnet_2.id
-  route_table_id = aws_route_table.private_route_table.id
+resource "aws_route_table_association" "priv_app_az2" {
+  subnet_id      = aws_subnet.private_app_az2.id
+  route_table_id = aws_route_table.private_rt_az2.id
 }
 
-# -----------------------------------------------------------------------------
-# Consumer VPC (aws_vpc.alpha - 10.37.0.0/16)
-# -----------------------------------------------------------------------------
+# 4. Database Route Table (NO INTERNET ROUTE)
+resource "aws_route_table" "db_rt" {
+  vpc_id = aws_vpc.legacylens.id
+
+  tags = { Name = "legacylens-db-rt" }
+}
+
+resource "aws_route_table_association" "db_az1" {
+  subnet_id      = aws_subnet.private_db_az1.id
+  route_table_id = aws_route_table.db_rt.id
+}
+
+resource "aws_route_table_association" "db_az2" {
+  subnet_id      = aws_subnet.private_db_az2.id
+  route_table_id = aws_route_table.db_rt.id
+}
+
+
+# ====================================================================
+# CONSUMER VPC (aws_vpc.alpha - 10.37.0.0/16)
+# ====================================================================
+
 resource "aws_vpc" "alpha" {
   cidr_block           = var.vpc_alpha_cidr
   enable_dns_hostnames = true
@@ -137,4 +217,23 @@ resource "aws_subnet" "alpha_private_b" {
   tags = {
     Name = "alpha-private-b"
   }
+}
+
+# Consumer VPC Private Route Table
+resource "aws_route_table" "alpha_private_rt" {
+  vpc_id = aws_vpc.alpha.id
+
+  tags = {
+    Name = "alpha-private-rt"
+  }
+}
+
+resource "aws_route_table_association" "alpha_priv_a" {
+  subnet_id      = aws_subnet.alpha_private_a.id
+  route_table_id = aws_route_table.alpha_private_rt.id
+}
+
+resource "aws_route_table_association" "alpha_priv_b" {
+  subnet_id      = aws_subnet.alpha_private_b.id
+  route_table_id = aws_route_table.alpha_private_rt.id
 }
