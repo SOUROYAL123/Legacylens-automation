@@ -1,1 +1,1 @@
-{"host":["terraform-9f6ea480443a71f219cebaabfd.cf46cm6os79v.ap-south-1.rds.amazonaws.com"],"portNumber":["5432"],"localPortNumber":["5432"]}
+<rds-endpoint>.ap-south-1.rds.amazonaws.com
