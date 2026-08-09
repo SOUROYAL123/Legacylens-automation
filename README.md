@@ -155,7 +155,7 @@ psql -h terraform-044b39d4f87acf5e351c17466b.cfew2m0cwv6o.ap-south-1.rds.amazona
 ## Day 8: Multi-Tenant Schema Isolation & Dynamic Search Path
 
 **Work completed:**
-- Wrote `day8_multitenant.sql` to create two schemas (`tenant_alpha`, `tenant_beta`) inside the shared RDS database.
+- Created two schemas (`tenant_alpha`, `tenant_beta`) inside the shared RDS database via a migration SQL script.
 - Provisioned `assets` tables, primary keys, indexes (`idx_alpha_asset_name`, `idx_beta_asset_name`), and seed data within each tenant namespace.
 - Wrote `index.js` using `pg.Pool`, issuing a session-level `SET search_path TO <tenant_schema>` before each query.
 
@@ -209,7 +209,7 @@ Compute/OS: EC2, Ubuntu · Database: PostgreSQL 16 (RDS) · Networking: `ss`, `i
 
 **2. Idempotent multi-tenant migrations**
 
-Moved from manual SQL to an automated migration script (`day10_schema_migration.sql`):
+Moved from manual SQL to an automated migration script:
 - Wrapped execution in `BEGIN;` / `COMMIT;` to avoid a partially applied migration on failure.
 - Used `IF NOT EXISTS` clauses for schema and table creation so the script can be re-run safely.
 - Kept `tenant_alpha` and `tenant_beta` strictly separated within the shared RDS instance.
@@ -241,7 +241,7 @@ Secure the version control workflow, run Linux storage diagnostics on EC2, and d
 **3. PostgreSQL operations**
 - Modified `pg_hba.conf` to resolve a local client connection block, temporarily relaxing SSL/password constraints for a direct local connection via PowerShell.
 - Provisioned the `legacylens_db` database and deployed the Day 10 multi-tenant schemas.
-- Ran `day11_index_tuning.sql` to add composite B-tree indexes (`created_at DESC, customer_name`) across tenant partitions, avoiding full sequential scans as data grows.
+- Added composite B-tree indexes (`created_at DESC, customer_name`) across tenant partitions, avoiding full sequential scans as data grows.
 
 ### Insights
 
@@ -262,7 +262,7 @@ Build diagnostic tooling for PostgreSQL deadlocks in production, and refactor a 
 ### Execution
 
 **1. Concurrency management**
-- Wrote `day12_lock_diagnostics.sql`, joining `pg_catalog.pg_locks` and `pg_stat_activity` to identify blocked queries and lock-holding PIDs.
+- Wrote a diagnostic script joining `pg_catalog.pg_locks` and `pg_stat_activity` to identify blocked queries and lock-holding PIDs.
 - Established a process for resolving contention using `pg_cancel_backend` and `pg_terminate_backend` without requiring a server restart.
 
 **2. IaC refactoring**
