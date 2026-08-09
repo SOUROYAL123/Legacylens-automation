@@ -1,5 +1,5 @@
 # ====================================================================
-# COMPUTE, DATABASE, SECURITY & OUTPUTS (main.tf)
+# COMPUTE, DATABASE, SECRETS & SECURITY (main.tf)
 # ====================================================================
 
 provider "aws" {
@@ -17,6 +17,35 @@ data "aws_ami" "amazon_linux_2023" {
   }
 }
 
+# -----------------------------------------------------------------------------
+# DYNAMIC SECRETS MANAGEMENT (Security Fix)
+# -----------------------------------------------------------------------------
+resource "random_password" "db_password" {
+  length           = 24
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
+}
+
+resource "aws_secretsmanager_secret" "db_credentials" {
+  name                    = "legacylens/production/rds"
+  recovery_window_in_days = 0
+  tags                    = { Name = "legacylens-db-credentials" }
+}
+
+resource "aws_secretsmanager_secret_version" "db_credentials_val" {
+  secret_id = aws_secretsmanager_secret.db_credentials.id
+  secret_string = jsonencode({
+    username = "db_admin_user"
+    password = random_password.db_password.result
+    dbname   = "legacylens_prod"
+    port     = 5432
+    host     = aws_db_instance.postgres_db.address
+  })
+}
+
+# -----------------------------------------------------------------------------
+# FIREWALL & SECURITY GROUPS
+# -----------------------------------------------------------------------------
 # 1. SSM Bastion Security Group (Zero Inbound Ports)
 resource "aws_security_group" "bastion_sg" {
   name        = "bastion-sg"
@@ -84,6 +113,9 @@ resource "aws_security_group" "db_sg" {
   tags = { Name = "Legacylens-DB-SG" }
 }
 
+# -----------------------------------------------------------------------------
+# COMPUTE RESOURCES
+# -----------------------------------------------------------------------------
 # 4. Hardened SSM Bastion Host Instance
 resource "aws_instance" "bastion" {
   ami                    = data.aws_ami.amazon_linux_2023.id
@@ -118,6 +150,9 @@ resource "aws_instance" "private_app_server" {
   tags = { Name = "Legacylens-Private-App-Server" }
 }
 
+# -----------------------------------------------------------------------------
+# DATABASE RESOURCES
+# -----------------------------------------------------------------------------
 # 6. DB Subnet Group
 resource "aws_db_subnet_group" "db_subnet_group" {
   name       = "legacylens-db-subnet-group"
@@ -134,7 +169,8 @@ resource "aws_db_instance" "postgres_db" {
   instance_class                       = "db.t4g.micro"
   db_name                              = "legacylens_prod"
   username                             = "db_admin_user"
-  password                             = "LegacyLensSecure2026!"
+  # SECURED: Referencing the dynamic password instead of plaintext
+  password                             = random_password.db_password.result
   db_subnet_group_name                 = aws_db_subnet_group.db_subnet_group.name
   vpc_security_group_ids               = [aws_security_group.db_sg.id]
   multi_az                             = false 
@@ -148,6 +184,9 @@ resource "aws_db_instance" "postgres_db" {
   tags = { Name = "Legacylens-Production-Database" }
 }
 
+# -----------------------------------------------------------------------------
+# IAM & SSM CONFIGURATIONS
+# -----------------------------------------------------------------------------
 # 8. IAM Role for Systems Manager (SSM)
 resource "aws_iam_role" "ssm_role" {
   name = "Legacylens-SSM-Role"
