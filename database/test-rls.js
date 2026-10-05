@@ -1,12 +1,13 @@
+require('dotenv').config();
 const { Pool } = require('pg');
 
 const pool = new Pool({
-    host: 'terraform-523cc102412777f0391369a861.cfew2m0cwv6o.ap-south-1.rds.amazonaws.com',
-    database: 'legacylens_prod',
-    user: 'db_admin_user',
-    password: 'LegacyLensSecure2026!',
-    port: 5432,
-    ssl: { rejectUnauthorized: false } // Required for secure AWS RDS connection
+    host: process.env.DB_HOST,
+    database: process.env.DB_NAME || 'legacylens_prod',
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    port: Number(process.env.DB_PORT) || 5432,
+    ssl: { rejectUnauthorized: false } // lab only; use the RDS CA bundle in production
 });
 
 async function runTest() {
